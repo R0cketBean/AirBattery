@@ -488,18 +488,21 @@ struct popover: View {
                                             HStack(spacing: 3) {
                                                 if allDevices[index].deviceID == "@MacInternalBattery" {
                                                     if let power = chargePowerText(InternalBattery.status) {
+                                                        // Not enough room for the label next to the power, show only the time
                                                         Text(power)
                                                             .font(.system(size: 11, weight: .medium))
                                                             .foregroundColor(.secondary)
                                                             .fixedSize()
                                                         Spacer().frame(width: 2)
+                                                    } else {
+                                                        Text(allDevices[index].isCharging != 0 ? "Until Full:" : "Until Empty:")
+                                                            .font(.system(size: 11, weight: .medium))
+                                                            .foregroundColor(.secondary)
                                                     }
-                                                    Text(allDevices[index].isCharging != 0 ? "Until Full:" : "Until Empty:")
-                                                        .font(.system(size: 11, weight: .medium))
-                                                        .foregroundColor(.secondary)
                                                     Text(InternalBattery.status.timeLeft)
                                                         .font(.system(size: 11, weight: .medium))
                                                         .foregroundColor(.secondary)
+                                                        .fixedSize()
                                                 } else {
                                                     if allDevices[index].realUpdate != 0.0 {
                                                         Text("\(Int((Date().timeIntervalSince1970 - allDevices[index].realUpdate) / 60))"+" mins ago".local)
