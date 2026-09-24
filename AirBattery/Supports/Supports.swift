@@ -350,7 +350,6 @@ func getPowerState() -> iBattery {
             var ib = iBattery(hasBattery: true, isCharging: isCharging, isCharged :internalBattery.isCharged ?? false, acPowered: acPowered, timeLeft: internalBattery.timeLeft, batteryLevel: Int(max(0, min(100, level))))
             if #available(macOS 12.0, *) { ib.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled }
             if acPowered {
-                ib.adapterWatts = internalBattery.adapterWatts
                 if !isCharging {
                     ib.chargeWatts = 0
                 } else if let amperage = internalBattery.amperage, let volts = internalBattery.voltage {
@@ -370,14 +369,8 @@ func getPowerState() -> iBattery {
 
 func chargePowerText(_ ib: iBattery, compact: Bool = false) -> String? {
     guard ib.acPowered else { return nil }
-    let charge = ib.chargeWatts.map { "\(Int($0.rounded()))" }
-    if compact { return charge.map { "\($0)W" } }
-    switch (charge, ib.adapterWatts) {
-    case let (c?, a?): return "\(c) W / \(a) W"
-    case let (c?, nil): return "\(c) W"
-    case let (nil, a?): return "\(a) W"
-    default: return nil
-    }
+    guard let watts = ib.chargeWatts else { return nil }
+    return "\(Int(watts.rounded()))" + (compact ? "W" : " W")
 }
 
 func getPowerColor(_ device: Device) -> String {

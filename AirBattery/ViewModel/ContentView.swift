@@ -491,6 +491,7 @@ struct popover: View {
                                                         Text(power)
                                                             .font(.system(size: 11, weight: .medium))
                                                             .foregroundColor(.secondary)
+                                                            .fixedSize()
                                                         Spacer().frame(width: 2)
                                                     }
                                                     Text(allDevices[index].isCharging != 0 ? "Until Full:" : "Until Empty:")

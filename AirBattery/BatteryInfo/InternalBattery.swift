@@ -17,7 +17,6 @@ struct iBattery {
     var batteryLevel: Int
     var lowPower: Bool = false
     var chargeWatts: Double? = nil
-    var adapterWatts: Int? = nil
 }
 
 class InternalBattery {
@@ -40,7 +39,6 @@ class InternalBattery {
     var voltage: Double?
     var watts: Double?
     var temperature: Double?
-    var adapterWatts: Int?
 
     var charge: Double? {
         get {
@@ -170,7 +168,6 @@ class InternalFinder {
         // Power
         battery.amperage = self.getIntValue("Amperage" as CFString)
         battery.voltage = self.getVoltage()
-        battery.adapterWatts = self.getAdapterWatts()
 
         // Various
         battery.temperature = self.getTemperature()
@@ -237,11 +234,6 @@ class InternalFinder {
         }
 
         return nil
-    }
-
-    fileprivate func getAdapterWatts() -> Int? {
-        guard let details = IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() as? [String: Any] else { return nil }
-        return details[kIOPSPowerAdapterWattsKey] as? Int
     }
 
     fileprivate func getManufactureDate() -> Date? {
