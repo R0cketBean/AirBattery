@@ -16,6 +16,8 @@ struct iBattery {
     var timeLeft: String
     var batteryLevel: Int
     var lowPower: Bool = false
+    var chargeWatts: Double? = nil
+    var adapterWatts: Int? = nil
 }
 
 class InternalBattery {
@@ -38,11 +40,12 @@ class InternalBattery {
     var voltage: Double?
     var watts: Double?
     var temperature: Double?
+    var adapterWatts: Int?
 
     var charge: Double? {
         get {
             if let current = self.currentCapacity,
-               let max = self.maxCapacity {
+               let max = self.maxCapacity, max > 0 {
                 return (Double(current) / Double(max)) * 100.0
             }
             return nil
@@ -52,7 +55,7 @@ class InternalBattery {
     var health: Double? {
         get {
             if let design = self.designCapacity,
-               let current = self.maxCapacity {
+               let current = self.maxCapacity, design > 0 {
                 return (Double(current) / Double(design)) * 100.0
             }
             return nil
@@ -92,10 +95,10 @@ class InternalFinder {
     public var batteryPresent: Bool {
         get {
             if !self.internalChecked {
-                let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-                let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
-
-                self.hasInternalBattery = sources.count > 0
+                if let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+                   let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] {
+                    self.hasInternalBattery = sources.count > 0
+                }
                 self.internalChecked = true
             }
 
@@ -135,18 +138,19 @@ class InternalFinder {
     fileprivate func getBatteryData() -> InternalBattery {
         let battery = InternalBattery()
 
-        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
+        // IOPS calls can return NULL (e.g. right after wake from sleep), so never force-unwrap them
+        if let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+           let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] {
+            for ps in sources {
+                // Fetch the information for a given power source out of our snapshot
+                guard let info = IOPSGetPowerSourceDescription(snapshot, ps)?.takeUnretainedValue() as? [String: Any] else { continue }
 
-        for ps in sources {
-            // Fetch the information for a given power source out of our snapshot
-            let info = IOPSGetPowerSourceDescription(snapshot, ps).takeUnretainedValue() as! Dictionary<String, Any>
+                // Pull out the name and capacity
+                battery.name = info[kIOPSNameKey] as? String
 
-            // Pull out the name and capacity
-            battery.name = info[kIOPSNameKey] as? String
-
-            battery.timeToEmpty = info[kIOPSTimeToEmptyKey] as? Int
-            battery.timeToFull = info[kIOPSTimeToFullChargeKey] as? Int
+                battery.timeToEmpty = info[kIOPSTimeToEmptyKey] as? Int
+                battery.timeToFull = info[kIOPSTimeToFullChargeKey] as? Int
+            }
         }
 
         // Capacities
@@ -166,6 +170,7 @@ class InternalFinder {
         // Power
         battery.amperage = self.getIntValue("Amperage" as CFString)
         battery.voltage = self.getVoltage()
+        battery.adapterWatts = self.getAdapterWatts()
 
         // Various
         battery.temperature = self.getTemperature()
@@ -211,7 +216,8 @@ class InternalFinder {
 
     fileprivate func getTemperature() -> Double? {
         if let value = IORegistryEntryCreateCFProperty(self.serviceInternal, "Temperature" as CFString, kCFAllocatorDefault, 0) {
-            return value.takeRetainedValue() as! Double / 100.0
+            guard let temp = value.takeRetainedValue() as? Double else { return nil }
+            return temp / 100.0
         }
 
         return nil
@@ -233,9 +239,14 @@ class InternalFinder {
         return nil
     }
 
+    fileprivate func getAdapterWatts() -> Int? {
+        guard let details = IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() as? [String: Any] else { return nil }
+        return details[kIOPSPowerAdapterWattsKey] as? Int
+    }
+
     fileprivate func getManufactureDate() -> Date? {
         if let value = IORegistryEntryCreateCFProperty(self.serviceInternal, "ManufactureDate" as CFString, kCFAllocatorDefault, 0) {
-            let date = value.takeRetainedValue() as! Int
+            guard let date = value.takeRetainedValue() as? Int else { return nil }
 
             let day = date & 31
             let month = (date >> 5) & 15

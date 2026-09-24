@@ -487,6 +487,12 @@ struct popover: View {
                                         if overStack == index {
                                             HStack(spacing: 3) {
                                                 if allDevices[index].deviceID == "@MacInternalBattery" {
+                                                    if let power = chargePowerText(InternalBattery.status) {
+                                                        Text(power)
+                                                            .font(.system(size: 11, weight: .medium))
+                                                            .foregroundColor(.secondary)
+                                                        Spacer().frame(width: 2)
+                                                    }
                                                     Text(allDevices[index].isCharging != 0 ? "Until Full:" : "Until Empty:")
                                                         .font(.system(size: 11, weight: .medium))
                                                         .foregroundColor(.secondary)

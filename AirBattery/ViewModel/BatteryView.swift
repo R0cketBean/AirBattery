@@ -54,6 +54,7 @@ struct mainBatteryView: View {
     @AppStorage("batteryPercent") var batteryPercent = "outside"
     @AppStorage("internalLevel") var internalLevel = false
     @AppStorage("hideLevel") var hideLevel = 90
+    @AppStorage("showChargePower") var showChargePower = false
     
     @AppStorage("test_debug") var test_debug = false
     @AppStorage("test_hasib") var test_hasib = false
@@ -66,6 +67,9 @@ struct mainBatteryView: View {
     var body: some View {
         HStack(alignment: .center, spacing:4){
             if item.hasBattery && intBattOnStatusBar {
+                if showChargePower, let power = chargePowerText(item, compact: true) {
+                    Text(power).font(.system(size: 11))
+                }
                 if batteryPercent == "outside" && !(item.batteryLevel > hideLevel) {
                     Text("\(item.batteryLevel)%").font(.system(size: 11))
                 }
@@ -161,15 +165,9 @@ struct mainBatteryView: View {
                         InternalBattery.status = getPowerState()
                     }
                     item = InternalBattery.status
-                    if batteryPercent != "outside" {
-                        if width != 42 { setStatusBar(width: 42) }
-                    } else {
-                        if item.batteryLevel > hideLevel {
-                            if width != 42 { setStatusBar(width: 42) }
-                        } else {
-                            if width != 76 { setStatusBar(width: 76) }
-                        }
-                    }
+                    let extra: CGFloat = (showChargePower && chargePowerText(item, compact: true) != nil) ? 34 : 0
+                    let target: CGFloat = (batteryPercent != "outside" || item.batteryLevel > hideLevel) ? 42 + extra : 76 + extra
+                    if width != target { setStatusBar(width: Double(target)) }
                 } else {
                     if width != 36 { setStatusBar(width: 36) }
                 }

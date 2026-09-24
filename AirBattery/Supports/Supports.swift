@@ -336,18 +336,48 @@ func randomString(length: Int) -> String {
     return randomString
 }
 
+private var lastValidPowerState: iBattery? = nil
+
 func getPowerState() -> iBattery {
     @AppStorage("machineType") var machineType = "mac"
     if !machineType.lowercased().contains("book") { return iBattery(hasBattery: false, isCharging: false, isCharged: false, acPowered: false, timeLeft: "", batteryLevel: 0) }
     let internalFinder = InternalFinder()
     if let internalBattery = internalFinder.getInternalBattery() {
-        if let level = internalBattery.charge {
-            var ib = iBattery(hasBattery: true, isCharging: internalBattery.isCharging ?? false, isCharged :internalBattery.isCharged ?? false, acPowered: internalBattery.acPowered ?? false, timeLeft: internalBattery.timeLeft, batteryLevel: Int(level))
+        // Int(level) traps on NaN/inf, so only accept finite values
+        if let level = internalBattery.charge, level.isFinite {
+            let isCharging = internalBattery.isCharging ?? false
+            let acPowered = internalBattery.acPowered ?? false
+            var ib = iBattery(hasBattery: true, isCharging: isCharging, isCharged :internalBattery.isCharged ?? false, acPowered: acPowered, timeLeft: internalBattery.timeLeft, batteryLevel: Int(max(0, min(100, level))))
             if #available(macOS 12.0, *) { ib.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled }
+            if acPowered {
+                ib.adapterWatts = internalBattery.adapterWatts
+                if !isCharging {
+                    ib.chargeWatts = 0
+                } else if let amperage = internalBattery.amperage, let volts = internalBattery.voltage {
+                    let watts = Double(amperage) * volts / 1000.0
+                    if watts.isFinite { ib.chargeWatts = max(0, watts) }
+                }
+            }
+            lastValidPowerState = ib
             return ib
         }
     }
+    // Keep the last known state on a transient read failure (e.g. right after wake),
+    // otherwise the menu bar view stops updating for good
+    if let last = lastValidPowerState { return last }
     return iBattery(hasBattery: false, isCharging: false, isCharged: false, acPowered: false, timeLeft: "", batteryLevel: 0)
+}
+
+func chargePowerText(_ ib: iBattery, compact: Bool = false) -> String? {
+    guard ib.acPowered else { return nil }
+    let charge = ib.chargeWatts.map { "\(Int($0.rounded()))" }
+    if compact { return charge.map { "\($0)W" } }
+    switch (charge, ib.adapterWatts) {
+    case let (c?, a?): return "\(c) W / \(a) W"
+    case let (c?, nil): return "\(c) W"
+    case let (nil, a?): return "\(a) W"
+    default: return nil
+    }
 }
 
 func getPowerColor(_ device: Device) -> String {
