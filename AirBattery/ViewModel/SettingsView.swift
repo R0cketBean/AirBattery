@@ -275,6 +275,7 @@ struct DisplayView: View {
     @AppStorage("intBattOnStatusBar") var intBattOnStatusBar = true
     @AppStorage("batteryPercent") var batteryPercent = "outside"
     @AppStorage("hideLevel") var hideLevel = 90
+    @AppStorage("showChargePower") var showChargePower = false
     @AppStorage("disappearTime") var disappearTime = 20
     @State private var levelList = [95, 90, 80, 70, 60, 50, 40, 30, 20, 10]
     
@@ -296,6 +297,9 @@ struct DisplayView: View {
                     Text("Inside").tag("inside")
                     Text("Outside").tag("outside")
                 }.disabled(!intBattOnStatusBar)
+                Divider().opacity(0.5)
+                SToggle("Show Charging Power", isOn: $showChargePower)
+                    .disabled(!intBattOnStatusBar)
                 Divider().opacity(0.5)
                 SPicker("Remove Offline Device", selection: $disappearTime) {
                     Text("Never").tag(UInt32.max)
