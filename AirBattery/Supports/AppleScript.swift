@@ -31,7 +31,11 @@ class reloadAll: NSScriptCommand {
 
 class getUsage: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
-        let device = self.evaluatedArguments!["name"] as! String
+        // Was force-unwrapping evaluatedArguments and force-casting its "name" entry - an
+        // AppleScript/Shortcuts call missing that argument, or passing the wrong type, would
+        // crash the whole app instead of just failing this one command. Falls back to the same
+        // "-1 / not found" convention already used below when no matching device exists.
+        guard let device = self.evaluatedArguments?["name"] as? String else { return -1 }
         var allDevices = AirBatteryModel.getAll(noFilter: true)
         let ibStatus = InternalBattery.status
         if ibStatus.hasBattery { allDevices.insert(ib2ab(ibStatus), at: 0) }
@@ -44,7 +48,11 @@ class getUsage: NSScriptCommand {
 
 class getStatus: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
-        let device = self.evaluatedArguments!["name"] as! String
+        // Was force-unwrapping evaluatedArguments and force-casting its "name" entry - an
+        // AppleScript/Shortcuts call missing that argument, or passing the wrong type, would
+        // crash the whole app instead of just failing this one command. Falls back to the same
+        // "-1 / not found" convention already used below when no matching device exists.
+        guard let device = self.evaluatedArguments?["name"] as? String else { return -1 }
         var allDevices = AirBatteryModel.getAll(noFilter: true)
         let ibStatus = InternalBattery.status
         if ibStatus.hasBattery { allDevices.insert(ib2ab(ibStatus), at: 0) }

@@ -352,14 +352,10 @@ struct batteryWidgetEntryView2: View {
         VStack {
             switch entry.family {
             case .systemSmall:
-                if #available(macOS 14, *) {
-                    let item = entry.deviceName != "" ? entry.data.first(where: { $0.deviceName == entry.deviceName }) : nil
-                    singleBatteryWidgetEntryView(entry: entry, item: item, deviceName: entry.deviceName, warringText: "Right click to configure".local)
-                } else {
-                    let deviceName = AirBatteryModel.singleDeviceName()
-                    let item = deviceName != "" ? entry.data.first(where: { $0.deviceName == deviceName }) : nil
-                    singleBatteryWidgetEntryView(entry: entry, item: item, deviceName: deviceName, warringText: "Select a Device in Preferences".local)
-                }
+                // AppIntent-based widget configuration requires macOS 14+, always true now that
+                // the minimum deployment target is 14.0 - the pre-14 fallback was removed.
+                let item = entry.deviceName != "" ? entry.data.first(where: { $0.deviceName == entry.deviceName }) : nil
+                singleBatteryWidgetEntryView(entry: entry, item: item, deviceName: entry.deviceName, warringText: "Right click to configure".local)
             case .systemMedium:
                 doubleRowBatteryWidgetEntryView(entry: entry)
             case .systemLarge:
@@ -382,7 +378,7 @@ struct batteryWidget2New: Widget {
             batteryWidgetEntryView2(entry: entry)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
-                .widgetBackground(Color("WidgetBackground"))
+                .widgetBackground(AirBatteryModel.getWhiteWidgetBackground() ? Color.white : Color("WidgetBackground"))
         }
         .configurationDisplayName("Batteries")
         .description("Displays the battery usage of a specific device")
@@ -399,7 +395,7 @@ struct batteryWidget2: Widget {
             batteryWidgetEntryView2(entry: entry)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
-                .widgetBackground(Color("WidgetBackground"))
+                .widgetBackground(AirBatteryModel.getWhiteWidgetBackground() ? Color.white : Color("WidgetBackground"))
         }
         .configurationDisplayName("Batteries")
         .description("More ways to displays battery usage for your devices")

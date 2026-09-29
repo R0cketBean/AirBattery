@@ -11,6 +11,7 @@ import SwiftUI
 let fd = FileManager.default
 let ud = UserDefaults.standard
 let ncFolder = fd.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("NearcastData")
+let mainAppBundleID = "com.lihaoyun6.AirBattery"
 
 @available(macOS 14, *)
 struct ViewSizeTimelineProviderNew: AppIntentTimelineProvider {
@@ -21,7 +22,7 @@ struct ViewSizeTimelineProviderNew: AppIntentTimelineProvider {
     func snapshot(for configuration: ConfigurationAppIntent, in context: Context) async -> SimpleEntry {
         var mainApp = false
         let apps = NSWorkspace.shared.runningApplications
-        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == "com.lihaoyun6.AirBattery" { mainApp = true } }
+        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == mainAppBundleID { mainApp = true } }
         var data = AirBatteryModel.readData()
         let ncFiles = getFiles(withExtension: "json", in: ncFolder)
         for ncFile in ncFiles {
@@ -39,7 +40,7 @@ struct ViewSizeTimelineProviderNew: AppIntentTimelineProvider {
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<SimpleEntry> {
         var mainApp = false
         let apps = NSWorkspace.shared.runningApplications
-        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == "com.lihaoyun6.AirBattery" { mainApp = true } }
+        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == mainAppBundleID { mainApp = true } }
         var data = AirBatteryModel.readData()
         let ncFiles = getFiles(withExtension: "json", in: ncFolder)
         for ncFile in ncFiles {
@@ -66,7 +67,7 @@ struct ViewSizeTimelineProvider: TimelineProvider {
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> Void) {
         var mainApp = false
         let apps = NSWorkspace.shared.runningApplications
-        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == "com.lihaoyun6.AirBattery" { mainApp = true } }
+        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == mainAppBundleID { mainApp = true } }
         var data = AirBatteryModel.readData()
         let ncFiles = getFiles(withExtension: "json", in: ncFolder)
         for ncFile in ncFiles {
@@ -86,7 +87,7 @@ struct ViewSizeTimelineProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<SimpleEntry>) -> Void) {
         var mainApp = false
         let apps = NSWorkspace.shared.runningApplications
-        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == "com.lihaoyun6.AirBattery" { mainApp = true } }
+        for app in apps as [NSRunningApplication] { if app.bundleIdentifier == mainAppBundleID { mainApp = true } }
         var data = AirBatteryModel.readData()
         let ncFiles = getFiles(withExtension: "json", in: ncFolder)
         for ncFile in ncFiles {
@@ -513,7 +514,7 @@ struct batteryWidget: Widget {
             batteryWidgetEntryView(entry: entry)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
-                .widgetBackground(Color("WidgetBackground"))
+                .widgetBackground(AirBatteryModel.getWhiteWidgetBackground() ? Color.white : Color("WidgetBackground"))
         }
         .configurationDisplayName("Batteries")
         .description("Displays battery usage for your devices from AirBattery")

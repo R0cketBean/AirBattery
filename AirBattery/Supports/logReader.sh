@@ -1,7 +1,12 @@
 IFS=$'\n'
 if [ "x$1" = "xmac" ]; then
     # Tightened predicate with correct precedence and reduced scope
-    PRED='subsystem == "com.apple.bluetooth" AND (category == "CBStackDeviceMonitor" OR category == "Server.GATT") AND (eventMessage CONTAINS "Battery" OR eventMessage CONTAINS "statedump: 0x001A" OR eventMessage CONTAINS "statedump: 0x001D")'
+    # Added category == "CBPowerSource": on newer macOS versions some third-party BLE
+    # peripherals (e.g. Keychron K6 HE, Mi Mouse 3) report battery via this category
+    # instead of CBStackDeviceMonitor/Server.GATT, so those devices never showed up at
+    # all previously. This is additive - if no lines match this category on a given
+    # macOS version, it's a no-op.
+    PRED='subsystem == "com.apple.bluetooth" AND (category == "CBStackDeviceMonitor" OR category == "Server.GATT" OR category == "CBPowerSource") AND (eventMessage CONTAINS "Battery" OR eventMessage CONTAINS "statedump: 0x001A" OR eventMessage CONTAINS "statedump: 0x001D")'
     STYLE="--style compact"
     LVL="--level info"
 
@@ -14,16 +19,44 @@ if [ "x$1" = "xmac" ]; then
     fi
 
     #data=`log show --process bluetoothd --info --last $1|grep -E "com.apple.bluetooth:Server.GATT.*statedump|com.apple.bluetooth:CBStackDeviceMonitor.*Battery"`
+    # Cache system_profiler's Bluetooth listing once, used below to fill in a missing MAC
+    # address by matching on device name - some third-party BLE devices (Keychron K6 HE,
+    # Mi Mouse 3, etc.) omit the "BDA ..." field in their log lines on newer macOS, which
+    # meant `mac` came back empty and the device silently failed the "is this MAC actually
+    # connected" filter in BTDBattery.swift, so it was dropped and never shown even though
+    # its battery level WAS successfully read from the log.
+    btProfilerData=`/usr/sbin/system_profiler SPBluetoothDataType 2>/dev/null`
     for i in `echo "$data"|grep "Battery"|grep -v "VID 0x004C"`
     do
         time=`echo $i|awk '{print $1"T"$2}'`
-        name=`echo $i|grep -o ", Nm '.*', PID"|sed "s/, Nm '//g;s/', PID//g"`
+        # Fixes issue #137 (NuPhy keyboard, and likely other devices, not detected). This
+        # used to require a ", PID" field to appear immediately after the name (", Nm
+        # '...', PID") to match at all. Confirmed via a real `log show` capture that a
+        # "Device found" line for a NuPhy Air75 V2-1 keyboard has no VID/PID logged at all -
+        # its name is immediately followed by ", DsFl ..." instead - so the old pattern never
+        # matched and `name` came back empty for this device (and presumably any other device
+        # macOS doesn't log a VID/PID for). Matches just the quoted name itself now, regardless
+        # of whatever field follows it.
+        name=`echo $i|grep -o ", Nm '[^']*'"|sed "s/, Nm '//g;s/'\$//g"`
         type=`echo $i|grep -o ", DvT [A-z]*"|sed "s/, DvT //g"`
-        batt=`echo $i|grep -o ", Battery M [+-]*[0-9]*%"|grep -o "\d*"`
+        # NOTE: was `grep -o "\d*"` - "\d" is a PCRE digit-class escape that BSD/macOS grep
+        # (no -P support) does NOT understand; without -P it's treated as a literal "d",
+        # so "\d*" matched zero-or-more literal d's, i.e. it matched an empty string on
+        # every line instead of extracting the battery number. That silently produced an
+        # empty $batt for every device parsed via this path, which then failed the
+        # `[ "x$batt" != "x" ]` check below and got dropped entirely - this looks like the
+        # actual root cause behind third-party BLE devices (Mi Mouse 3, Keychron boards)
+        # never appearing in AirBattery at all. Fixed with a portable ERE digit class.
+        batt=`echo $i|grep -o ", Battery M [+-]*[0-9]*%"|grep -oE "[0-9]+"`
         stat=`echo $i|grep -o ", Battery M [+-]*[0-9]*%"|grep -Eo "\+|\-"`
         mac=`echo $i|grep -o ", BDA [A-z0-9:]*"|sed "s/, BDA //g"`
         vid=`echo $i|grep -o ", VID 0x[A-z0-9]*"|sed "s/, VID //g"`
         pid=`echo $i|grep -o ", PID 0x[A-z0-9]*"|sed "s/, PID //g"`
+        # Fallback: if the log line had no BDA field, try to recover the MAC by looking up
+        # this device's name in system_profiler's paired-device listing instead.
+        if [ "x$mac" = "x" ] && [ "x$name" != "x" ]; then
+            mac=`echo "$btProfilerData"|grep -B20 "^ *$name:\$"|grep "Address:"|tail -1|sed 's/^ *Address: //g;s/://g' | sed -E 's/(..)/\1:/g;s/:$//'`
+        fi
         if [ "x$batt" != "x" ]; then
             echo "{\"time\": \"$time\", \"vid\": \"$vid\", \"pid\": \"$pid\", \"type\": \"$type\", \"mac\": \"$mac\", \"name\": \"$name\", \"level\": $batt, \"status\": \"$stat\"}"
         fi

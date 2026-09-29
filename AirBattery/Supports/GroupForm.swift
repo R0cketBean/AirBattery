@@ -257,7 +257,7 @@ struct SSteper: View {
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)
                 .frame(width: width)
-                .onChange(of: value) { newValue in
+                .onChange(of: value) { _, newValue in
                     if newValue > max { value = max }
                     if newValue < min { value = min }
                 }

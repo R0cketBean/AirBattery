@@ -32,7 +32,20 @@ struct batteryWidgetEntryView3 : View {
 struct SmallWidgetView2: View {
     var entry: ViewSizeTimelineProvider.Entry
     let lineWidth = 6.0
-    
+
+    // The small widget only has room for 4 devices, and entry.data arrives in whatever
+    // order AirBattery normally keeps the device list, padded out with blank placeholders
+    // at the end. Requested: for the small widget specifically, show the devices lowest
+    // on battery first, since those are the ones someone glancing at a small widget cares
+    // about. Blanks (batteryLevel 0, used only as padding, not real devices) are kept out
+    // of the sort and appended back at the end so they still only show up if there are
+    // genuinely fewer than 4 real devices.
+    var sortedData: [Device] {
+        let real = entry.data.filter { $0.deviceType != "blank" }.sorted { $0.batteryLevel < $1.batteryLevel }
+        let blanks = entry.data.filter { $0.deviceType == "blank" }
+        return real + blanks
+    }
+
     var body: some View {
         if !entry.mainApp {
             Text("AirBattery is not running\nLaunch the app to make\nthe widget work")
@@ -60,7 +73,7 @@ struct SmallWidgetView2: View {
             }else{
                 VStack(spacing: 17) {
                     HStack(spacing: 17){
-                        ForEach(entry.data[0..<2], id: \.self) { item in
+                        ForEach(sortedData[0..<2], id: \.self) { item in
                             ZStack{
                                 Group {
                                     Circle()
@@ -109,7 +122,7 @@ struct SmallWidgetView2: View {
                     }
                     
                     HStack(spacing: 17){
-                        ForEach(entry.data[2..<4], id: \.self) { item in
+                        ForEach(sortedData[2..<4], id: \.self) { item in
                             ZStack{
                                 Group {
                                     Circle()
@@ -306,7 +319,7 @@ struct batteryWidget3: Widget {
             batteryWidgetEntryView3(entry: entry)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
-                .widgetBackground(Color("WidgetBackground"))
+                .widgetBackground(AirBatteryModel.getWhiteWidgetBackground() ? Color.white : Color("WidgetBackground"))
         }
         .configurationDisplayName("Batteries")
         .description("Displays battery usage for your devices without percentage")

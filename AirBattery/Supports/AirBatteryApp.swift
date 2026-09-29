@@ -10,11 +10,9 @@ import WidgetKit
 import UserNotifications
 import IOBluetooth
 import ServiceManagement
-import Sparkle
 
 let fd = FileManager.default
 let ud = UserDefaults.standard
-var updaterController: SPUStandardUpdaterController!
 var statusBarItem: NSStatusItem!
 var pinnedItems = [NSStatusItem]()
 var netcastService: MultipeerService = MultipeerService(serviceType: "airbattery-nc")
@@ -35,28 +33,66 @@ struct AirBatteryApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     init() {
-        // If you want to start the updater manually, pass false to startingUpdater and call .startUpdater() later
-        // This is where you can also pass an updater delegate if you need one
-        updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        // Sparkle (auto-update framework) has been fully removed from this build - this is a
+        // personal patched fork that gets rebuilt manually, so auto-updates were never usable
+        // and the framework was just dead weight.
         registerNotificationCategory()
     }
     
+    // Settings window setup, rebuilt clean end-to-end (previously patched incrementally):
+    // solid/opaque background, fixed non-resizable 600x440 size, and the sidebar width lock
+    // are all configured together up front here instead of layered on after the fact.
     var body: some Scene {
         Settings {
             SettingsView()
                 .background(
                     WindowAccessor(
                         onWindowOpen: { w in
-                            if let w = w {
-                                //w.level = .floating
-                                w.titlebarSeparatorStyle = .none
-                                guard let nsSplitView = findNSSplitVIew(view: w.contentView),
-                                      let controller = nsSplitView.delegate as? NSSplitViewController else { return }
-                                controller.splitViewItems.first?.canCollapse = false
-                                controller.splitViewItems.first?.minimumThickness = 175
-                                controller.splitViewItems.first?.maximumThickness = 175
-                                w.orderFront(nil)
+                            guard let w = w else { return }
+                            //w.level = .floating
+                            w.titlebarSeparatorStyle = .none
+                            // The title bar is allowed to show the real macOS vibrancy/blur
+                            // material (matching the sidebar's own .behindWindow material in
+                            // SettingsView), per what was asked for - the sidebar and title bar
+                            // both blur the desktop behind them, while the detail pane on the
+                            // right stays fully solid since it has its own explicit opaque
+                            // background applied directly in SettingsView.
+                            w.titlebarAppearsTransparent = true
+                            w.isOpaque = false
+                            w.backgroundColor = NSColor.clear
+                            // Fixed size, not resizable - this window's layout is designed for
+                            // exactly 600x440, so lock it instead of letting it stretch and break.
+                            w.styleMask.remove(.resizable)
+                            w.contentMinSize = NSSize(width: 600, height: 440)
+                            w.contentMaxSize = NSSize(width: 600, height: 440)
+                            // The sidebar's fixed width and non-draggable divider are now
+                            // handled natively in SettingsView via .navigationSplitViewColumnWidth
+                            // instead of reaching into the AppKit NSSplitViewController here.
+                            // Changing isOpaque/backgroundColor/styleMask above happens after the
+                            // window already exists, which can leave behind a stale cached shadow
+                            // that doesn't match the window's new shape - showing up as a faint
+                            // offset "ghost" edge behind the real window. Forcing a shadow/display
+                            // refresh here makes sure what's drawn matches the new window state.
+                            w.invalidateShadow()
+                            w.display()
+                            // SwiftUI's .scrollContentBackground(.hidden) doesn't reliably strip
+                            // the sidebar List's own opaque background on macOS the way it does
+                            // on iOS, which was painting solid white over the frosted-glass
+                            // material placed behind it. Reaching into the actual NSScrollView
+                            // backing the sidebar and turning off its own background painting
+                            // removes that opaque layer directly, letting the glass material
+                            // underneath show through as intended.
+                            func clearScrollViewBackgrounds(_ view: NSView) {
+                                if let scrollView = view as? NSScrollView {
+                                    scrollView.drawsBackground = false
+                                }
+                                for sub in view.subviews { clearScrollViewBackgrounds(sub) }
                             }
+                            if let nsSplitView = findNSSplitVIew(view: w.contentView),
+                               let sidebarPane = nsSplitView.arrangedSubviews.first {
+                                clearScrollViewBackgrounds(sidebarPane)
+                            }
+                            w.orderFront(nil)
                         })
                 )
         }
@@ -75,6 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
     @AppStorage("batteryPercent") var batteryPercent = "outside"
     @AppStorage("alertSound") var alertSound = true
     @AppStorage("readBTHID") var readBTHID = true
+    @AppStorage("readIDevice") var readIDevice = true
     @AppStorage("hideLevel") var hideLevel = 90
     @AppStorage("disappearTime") var disappearTime = 20
     @AppStorage("whitelistMode") var whitelistMode = false
@@ -82,7 +119,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
     @AppStorage("updateInterval") var updateInterval = 1
     @AppStorage("carouselMode") var carouselMode = true
     
-    //加载旧版设置项
+    //Load legacy settings
     @AppStorage("alertLevel") var alertLevel = 10
     @AppStorage("fullyLevel") var fullyLevel = 100
     
@@ -101,7 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
     }
     
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // 用户点击 Dock 图标时会调用这个方法
+        // Called when the user clicks the Dock icon
         if showOn == "sbar" || showOn == "none" {
             openSettingPanel()
             return false
@@ -135,7 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
                 if let defaults = UserDefaults(suiteName: "com.apple.dock"), let orientation = defaults.string(forKey: "orientation") { dockOrientation = orientation }
                 switch dockOrientation {
                 case "bottom":
-                    // Dock 位于屏幕底部
+                    // Dock is at the bottom of the screen
                     //menuX = menuX + 186 > visibleFrame.maxX ? visibleFrame.maxX - 362 : menuX - 176
                     if menuX + 186 > visibleFrame.maxX {
                         menuX = visibleFrame.maxX - 362
@@ -146,11 +183,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
                     }
                     menuY = max(menuY, visibleFrame.origin.y) + 20
                 case "right":
-                    // Dock 位于屏幕右侧
+                    // Dock is on the right side of the screen
                     menuX = menuX + 352 > visibleFrame.maxX ? visibleFrame.maxX - 372 : menuX + 10
                     menuY = max(menuY - menuHeight/2, visibleFrame.origin.y)
                 case "left":
-                    // Dock 位于屏幕左侧
+                    // Dock is on the left side of the screen
                     menuX = menuX + 352 > visibleFrame.maxX ? visibleFrame.maxX - 372 : menuX
                     menuX = menuX < visibleFrame.origin.x ? visibleFrame.origin.x + 20 : menuX + 10
                     menuY = max(menuY - menuHeight/2, visibleFrame.origin.y)
@@ -203,7 +240,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
         menu.addItem(withTitle:"Settings...".local, action: #selector(openSetting), keyEquivalent: "")
         menu.addItem(withTitle:"About AirBattery".local, action: #selector(openAbout), keyEquivalent: "")
         
-        //处理旧版偏好设置
+        //Handle legacy preferences
         if let alertList = (ud.object(forKey: "alertList") ?? []) as? [String] {
             let alerts: [btAlert] = alertList.map({
                 btAlert(name: $0, full: fullyLevel == 100 ? 99 : fullyLevel, fullOn: true, fullSound: alertSound, low: alertLevel, lowOn: true, lowSound: alertSound)
@@ -244,6 +281,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
         btdBattery.startScan()
         MagicBattery.shared.startScan()
         IDeviceBattery.shared.startScan()
+
+        // Fixes issue #78 (per-device battery alerts never arriving): batteryAlert() (in
+        // BatteryAlertView.swift) is the function that actually checks each device's
+        // configured low/full battery alert and fires the notification - but the only place
+        // it was ever called from was ContentView.swift's ".onReceive(alertTimer)", a
+        // SwiftUI view modifier that only runs while that view is actually part of the
+        // rendered hierarchy. Same as issue #91's root cause: AirBatteryApp.swift's
+        // togglePopover() builds a brand new NSHostingController every time the menu bar
+        // popover opens and tears it down when it closes, so battery alerts effectively only
+        // ever got checked during the moments the popover happened to be open - never while
+        // someone just leaves the app running in the menu bar, which is the normal way to use
+        // it. alertTimer itself (a global Timer.publish in Supports.swift) was ticking the
+        // whole time regardless - nothing was listening to it outside the popover. Wiring a
+        // real, view-independent timer here so alerts get checked on their own schedule.
+        _ = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in batteryAlert() }
+        batteryAlert()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             AirBatteryModel.writeData()
@@ -254,6 +307,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
         //menu.delegate = self
         //statusMenu.delegate = self
         statusBarItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Re: issue #182 - the main status item never had an autosaveName, which is what
+        // macOS (and third-party menu bar managers like Ice, built on the same mechanism)
+        // use to remember an item's position/visibility across launches. Without it, every
+        // relaunch this item has no persistent identity, which is exactly the kind of item
+        // Ice's default behavior tends to push into its hidden section. This doesn't
+        // guarantee Ice will behave differently (that's still ultimately Ice's own logic),
+        // but it gives the system something real to persist instead of nothing.
+        statusBarItem.autosaveName = "AirBatteryMainStatusItem"
         //statusBarItem.menu = statusMenu
         if let button = statusBarItem.button {
             button.target = self
@@ -266,7 +327,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
             }
             button.image = NSImage()
             button.addSubview(iconView)
-            button.frame = iconView.frame
+            // Deferred to the next run loop tick - setting the button's own frame right after
+            // adding a subview to it was forcing a synchronous re-layout of the status bar
+            // button while the system was still mid-layout on it during app launch, which is
+            // what was triggering the "-layoutSubtreeIfNeeded on a view which is already being
+            // laid out" warning right at startup.
+            DispatchQueue.main.async {
+                button.frame = iconView.frame
+            }
             button.action = #selector(togglePopover(_ :))
         }
         statusBarItem.isVisible = !(showOn == "dock" || showOn == "none")
@@ -302,6 +370,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
             // Bootstrap Enhanced HID scan incrementally with a short initial window
             DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
                 LogReader.shared.run(.bootstrap)
+            }
+        }
+
+        // Addresses issue #136 and its duplicates (Apple Watch, and other users' "S10"-style
+        // reports, not being detected even though every other device is) - this isn't
+        // actually a bug. Per the project owner's own explanation on that issue: Watch battery
+        // can only ever be read through the paired iPhone's WiFi-sync connection (the
+        // "comptest" tool call in IDeviceBattery.swift), never through Bluetooth - so if
+        // someone has iPhone detection set to Bluetooth-only, the Watch will never appear no
+        // matter what, since AirBattery never even asks the phone about it in that mode. The
+        // one-time fix is connecting the iPhone to the Mac by cable once, tapping "Trust This
+        // Computer" on the phone, then unplugging - that establishes the WiFi-sync pairing
+        // this needs. Surfacing that as an upfront tip (like the existing third-party-device
+        // one above) instead of leaving people to stumble onto the GitHub issue to learn it.
+        if readIDevice {
+            let tipID = "ab.watch-wifi-sync.note"
+            let never = ud.object(forKey: "neverRemindMe") as! [String]
+            if !never.contains(tipID) {
+                // Fixes issue #95 (Apple Pencil half): the Watch-visibility explanation below
+                // was already covering the most common cause reported in that thread, but
+                // several commenters in the same issue also couldn't see their Pencil's
+                // battery even with the Watch fixed - because reading Pencil battery is a beta
+                // toggle (readPencil, in Settings -> Nearbility) that's OFF by default and not
+                // mentioned anywhere else in the UI, so it's easy to never discover. Folding a
+                // mention of it into this same one-time tip instead of leaving people to find
+                // it by luck or by filing another issue.
+                let alert = createAlert(title: "AirBattery Tips".local, message: "To see your Apple Watch's battery, connect your iPhone to this Mac with a cable once and tap \"Trust This Computer\" on the phone, then you can unplug it. Watch battery can only be read through this WiFi-sync pairing, not Bluetooth, so it may not appear until this is done.\n\nTo see your Apple Pencil's battery, turn on \"Apple Pencil from your iPad\" in Settings > Nearbility - it's off by default.".local, button1: "Don't remind me again", button2: "OK")
+                if alert.runModal() == .alertFirstButtonReturn { ud.setValue(never + [tipID], forKey: "neverRemindMe") }
             }
         }
     }
@@ -393,7 +489,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
         if let button = statusBarItem.button, !menuPopover.isShown {
             var allDevices = AirBatteryModel.getAll()
             let ibStatus = InternalBattery.status
-            if ibStatus.hasBattery { allDevices.insert(ib2ab(ibStatus), at: 0) }
+            if ibStatus.hasBattery { allDevices = insertInternalBattery(into: allDevices, entry: ib2ab(ibStatus)) }
             let contentView = NSHostingController(rootView: popover(fromDock: false, allDevice: allDevices))
             menuPopover.setValue(true, forKeyPath: "shouldHideAnchor")
             menuPopover.contentViewController = contentView
@@ -491,6 +587,36 @@ public extension UserDefaults {
     }
 }
 
+// Fixes issue #100 (feature request): an option to show a battery bar graphic instead of
+// a plain percentage number for pinned menu bar devices. Reuses BatteryView (BatteryView.
+// swift) - the same battery-outline-with-fill graphic already used throughout the popover -
+// rendered to an NSImage via SwiftUI's ImageRenderer (macOS 13+) and set as the pinned
+// item's attributedTitle via an NSTextAttachment, so the existing device-type icon stays on
+// the left and the bar takes the place of the "51%" text. Falls back to the existing text
+// behavior on macOS 12 and older (ImageRenderer isn't available) or if rendering fails for
+// any reason.
+// @MainActor: ImageRenderer (used below) is main-thread-only in newer SDKs, and this function
+// touches NSStatusBarButton UI directly, which was always supposed to be main-thread-only too -
+// this just makes that requirement explicit instead of implicit.
+@MainActor
+func setPinnedButtonBatteryDisplay(_ button: NSStatusBarButton, device: Device) {
+    // ImageRenderer requires macOS 13+, always true now that the minimum deployment target is 14.0.
+    let pinnedBatteryBar = ud.bool(forKey: "pinnedBatteryBar")
+    if pinnedBatteryBar {
+        let renderer = ImageRenderer(content: BatteryView(item: device))
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        if let barImage = renderer.nsImage {
+            let attachment = NSTextAttachment()
+            attachment.image = barImage
+            attachment.bounds = CGRect(x: 0, y: -3, width: barImage.size.width, height: barImage.size.height)
+            button.attributedTitle = NSAttributedString(attachment: attachment)
+            return
+        }
+    }
+    button.title = "\(device.batteryLevel)\(device.isCharging != 0  ? "⚡︎" : "%")"
+}
+
+@MainActor
 func refeshPinnedBar(unpin: String? = nil) {
     var pinnedList = (ud.object(forKey: "pinnedList") ?? []) as! [String]
     if pinnedList.isEmpty { return }
@@ -502,15 +628,38 @@ func refeshPinnedBar(unpin: String? = nil) {
     let deviceNames = pinnedDevices.map({ $0.deviceName })
     for device in pinnedDevices {
         if let index = pinnedItems.firstIndex(where: { $0.button?.toolTip == device.deviceName }) {
-            pinnedItems[index].button?.title = "\(device.batteryLevel)\(device.isCharging != 0  ? "⚡︎" : "%")"
+            if let button = pinnedItems[index].button {
+                // Fixes a reported bug: the pinned menu-bar item's icon was only ever set once,
+                // at the moment the status item was first created (in the "else" branch below).
+                // Every later refresh here only updated the battery percentage/bar via
+                // setPinnedButtonBatteryDisplay, never the icon itself. getDeviceIcon() can
+                // return the generic Bluetooth placeholder on first connect, before the real
+                // device type has resolved - the popover picks up the corrected icon
+                // immediately because it recomputes getDeviceIcon() on every render, but the
+                // pinned bar icon was stuck on whatever it was at creation time, so it could be
+                // left showing the Bluetooth symbol indefinitely. Refreshing the image here too
+                // keeps it in sync with the popover.
+                let icon = getDeviceIcon(device)
+                if button.image?.name() != icon {
+                    let image = NSImage(named: icon)!.resized(to: NSSize(width: 17, height: 17))
+                    image.isTemplate = true
+                    button.image = image
+                }
+                setPinnedButtonBatteryDisplay(button, device: device)
+            }
         } else {
             let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            // Re: issue #182 - same fix as the main status item above: a stable autosaveName
+            // per pinned device gives the system (and Ice, etc.) a persistent identity to
+            // remember this item's position/visibility by, instead of it looking like a brand
+            // new anonymous item on every relaunch.
+            statusItem.autosaveName = "AirBatteryPinned.\(device.deviceName)"
             if let button = statusItem.button {
                 let icon = getDeviceIcon(device)
                 let image = NSImage(named: icon)!.resized(to: NSSize(width: 17, height: 17))
                 image.isTemplate = true
                 button.image = image
-                button.title = "\(device.batteryLevel)\(device.isCharging != 0  ? "⚡︎" : "%")"
+                setPinnedButtonBatteryDisplay(button, device: device)
                 button.toolTip = device.deviceName
             }
             pinnedItems.append(statusItem)
@@ -524,23 +673,19 @@ func refeshPinnedBar(unpin: String? = nil) {
 
 @discardableResult
 func ensureLoginItem(enabled: Bool) -> Bool {
-    let helperBundleIdentifier = "com.lihaoyun6.AirBatteryHelper"
-    if #available(macOS 13.0, *) {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            return true
-        } catch {
-            NSLog("[AirBattery] SMAppService register/unregister failed: \(error.localizedDescription)")
-            return false
+    // SMAppService requires macOS 13+, always true now that the minimum deployment target is
+    // 14.0 - the legacy SMLoginItemSetEnabled fallback (for macOS <13) is no longer reachable
+    // and has been removed.
+    do {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
         }
-    } else {
-        let ok = SMLoginItemSetEnabled(helperBundleIdentifier as CFString, enabled)
-        if !ok { NSLog("[AirBattery] SMLoginItemSetEnabled failed for \(helperBundleIdentifier)") }
-        return ok
+        return true
+    } catch {
+        NSLog("[AirBattery] SMAppService register/unregister failed: \(error.localizedDescription)")
+        return false
     }
 }
 

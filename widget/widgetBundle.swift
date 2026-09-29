@@ -8,31 +8,22 @@
 import WidgetKit
 import SwiftUI
 
+// All #available checks below were guarding features gated on macOS 12/14, which are always
+// available now that the minimum deployment target is macOS 14.0 - the pre-14/pre-12 fallback
+// branches were removed since they can no longer run.
 extension View {
     func widgetBackground(_ backgroundView: some View) -> some View {
-        if #available(macOS 14.0, *) {
-            return containerBackground(for: .widget) { backgroundView }
-        } else {
-            return background(backgroundView)
-        }
+        return containerBackground(for: .widget) { backgroundView }
     }
 }
 
 extension WidgetConfiguration {
     func disableContentMarginsIfNeeded() -> some WidgetConfiguration {
-        if #available(macOS 12.0, *) {
-            return self.contentMarginsDisabled()
-        } else {
-            return self
-        }
+        return self.contentMarginsDisabled()
     }
-    
+
     func supportFamily() -> some WidgetConfiguration {
-        if #available(macOS 14, *) {
-            return self.supportedFamilies([.systemLarge, .systemMedium])
-        } else {
-            return self.supportedFamilies([.systemLarge, .systemMedium, .systemSmall])
-        }
+        return self.supportedFamilies([.systemLarge, .systemMedium])
     }
 }
 
@@ -41,12 +32,8 @@ struct widgetBundle: WidgetBundle {
     var body: some Widget {
         widgets()
     }
-    
+
     func widgets() -> some Widget {
-        if #available(macOS 14, *) {
-            return WidgetBundleBuilder.buildBlock(batteryWidget(), batteryWidget2New(), batteryWidget2(), batteryWidget3())
-        } else {
-            return WidgetBundleBuilder.buildBlock(batteryWidget(), batteryWidget2(), batteryWidget3())
-        }
+        return WidgetBundleBuilder.buildBlock(batteryWidget(), batteryWidget2New(), batteryWidget2(), batteryWidget3())
     }
 }

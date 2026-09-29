@@ -10,21 +10,21 @@ import WidgetKit
 import Combine
 //import UserNotifications
 
-/*let test_data: [CGFloat] = [99,80,80,73,70,60,59,51,30,30,25,25,19,18,17,15,12,10,10,9] // 示例数据
+/*let test_data: [CGFloat] = [99,80,80,73,70,60,59,51,30,30,25,25,19,18,17,15,12,10,10,9] // Sample data
 struct BarChartView: View {
-    let data: [CGFloat] // 电量数据，取值范围 0 到 1
-    let barSpacing: CGFloat // 柱子之间的间距
-    let barWidth: CGFloat // 柱子宽度
+    let data: [CGFloat] // Battery level data, range 0 to 1
+    let barSpacing: CGFloat // Spacing between bars
+    let barWidth: CGFloat // Bar width
 
     var body: some View {
         GeometryReader { geometry in
-            HStack(alignment: .bottom, spacing: barSpacing) { // 设置底部对齐
+            HStack(alignment: .bottom, spacing: barSpacing) { // Align to bottom
                 ForEach(0..<data.count, id: \.self) { index in
                     let height = (data[index] * geometry.size.height)/100
                     Capsule()
                         .fill(Color(getPowerColor(Int(data[index]))))
                         .frame(width: barWidth, height: height)
-                        .padding(.bottom, -barWidth / 2) // 设置底部平坦
+                        .padding(.bottom, -barWidth / 2) // Flatten the bottom
                 }
             }
         }
@@ -193,11 +193,11 @@ struct MultiBatteryView: View {
             }
         }
         .frame(width: 128, height: 128, alignment: .center)
-        .onChange(of: appearanceMonitor.isDarkMode) { newValue in
+        .onChange(of: appearanceMonitor.isDarkMode) { _, newValue in
             darkMode = newValue
             NSApp.dockTile.display()
         }
-        .onChange(of: appearance) { _ in
+        .onChange(of: appearance) { _, _ in
             darkMode = getDarkMode()
             NSApp.dockTile.display()
         }
@@ -279,6 +279,12 @@ struct BlurView: NSViewRepresentable {
     }
 }
 
+// Support for issue #129/#117. ProcessInfo.isLowPowerModeEnabled requires macOS 12+, which is
+// always true now that the minimum deployment target is macOS 14.0.
+func getLowPowerModeEnabled() -> Bool {
+    return ProcessInfo.processInfo.isLowPowerModeEnabled
+}
+
 struct popover: View {
     var fromDock: Bool = false
     var allDevice: [Device]
@@ -289,9 +295,22 @@ struct popover: View {
     @State private var hiddenDevices = AirBatteryModel.getBlackList()
     @State private var overReloadButton = false
     @State private var overCopyButton = false
+    @State private var overIDButton = false
     @State private var overHideButton = false
     @State private var overAlertButton = false
     @State private var overPinButton = false
+    // Support for issue #135 (temporarily mute a device's low-battery alerts without fully
+    // hiding it, like the existing hide/pin buttons alongside it).
+    @State private var overMuteButton = false
+    @State private var mutedDevices = (ud.object(forKey: "mutedDevices") ?? []) as! [String]
+    // Support for issue #129/#117 (feature request): toggle the Mac's Low Power Mode straight
+    // from the menu bar dropdown, instead of needing to open System Settings. There's no
+    // public Apple API to SET Low Power Mode (only ProcessInfo.isLowPowerModeEnabled to READ
+    // it), so this shells out to `pmset`, the same tool System Settings itself uses under the
+    // hood, then re-reads the public API afterward to confirm whether it actually took effect
+    // rather than trusting pmset's own (often silent) output.
+    @State private var overLowPowerButton = false
+    @State private var isLowPowerMode = getLowPowerModeEnabled()
     @State private var overInfoButton = false
     @State private var overQuitButton = false
     @State private var overSettButton = false
@@ -305,9 +324,50 @@ struct popover: View {
     @State private var pinnedList = (ud.object(forKey: "pinnedList") ?? []) as! [String]
     @State private var allNearcast = getFiles(withExtension: "json", in: ncFolder)
     
+    // Liquid Glass pass, continued: wraps the existing content (unchanged below, renamed to
+    // bodyContent) in a proper rounded "glass card" shape with a thin light-catching border,
+    // instead of relying on NSPopover's own square-ish default chrome. Wrapping at this outer
+    // level - rather than editing deep inside the existing nested ZStack/VStack structure below
+    // - means none of the existing hover/pin/hide/click logic in bodyContent has to be touched
+    // or re-verified, since there's no compiler here to catch a mistake in that risky spot.
     var body: some View {
+        // Toned down from the first pass: cornerRadius 18->12, shadow radius 14->6 and
+        // opacity 0.18->0.1. The original values made the whole panel visibly bulkier
+        // (a wide soft shadow reads as "bigger" even though the actual content didn't
+        // grow), which is what looked oversized. This keeps the glass-card look but much
+        // closer to the panel's original footprint.
+        bodyContent
+            // Forces the panel to hug its content's actual height instead of stretching to
+            // fill whatever height NSPopover/NSHostingController happens to offer it - this
+            // is the likely cause of the blank space showing up below the last device row.
+            .fixedSize(horizontal: false, vertical: true)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.4), Color.white.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.75
+                    )
+            )
+            .shadow(color: .black.opacity(0.1), radius: 6, x: 0, y: 3)
+    }
+
+    private var bodyContent: some View {
         ZStack{
-            if fromDock { Color.clear.background(BlurView(material: .menu)) }
+            // Liquid Glass pass: this was previously "if fromDock { ...BlurView... }" - the
+            // blur material was ONLY ever applied when this view is shown inside the custom
+            // dockWindow (Dock display mode). The far more common case - clicking the menu
+            // bar icon, which shows this same view inside a real AppKit NSPopover - had NO
+            // explicit glass material behind it at all, just whatever bare-minimum background
+            // NSPopover supplies on its own. That's why the regular dropdown looked flat/
+            // opaque compared to system UI, even on macOS 26. Applying the same BlurView here
+            // unconditionally (using .popover, the material AppKit itself designed for this
+            // exact context) gives the dropdown a real glass background in both modes.
+            Color.clear.background(BlurView(material: fromDock ? .menu : .popover))
             VStack(spacing: 0){
                 if !fromDock {
                     Color.clear
@@ -380,6 +440,31 @@ struct popover: View {
                     .focusable(false)
                     .buttonStyle(PlainButtonStyle())
                     .onHover{ hovering in overSettButton = hovering }
+                    // Fixes issue #129/#117 (feature request): quick Low Power Mode toggle.
+                    Button(action: {
+                        let turningOn = !isLowPowerMode
+                        DispatchQueue.global().async {
+                            _ = process(path: "/usr/bin/pmset", arguments: ["-a", "lowpowermode", turningOn ? "1" : "0"])
+                            // pmset's own stdout is often empty on success, so confirm against
+                            // the public read-only API instead of trusting that silence meant
+                            // success - this also naturally surfaces the case where it's
+                            // silently refused for lack of privileges (isLowPowerMode simply
+                            // won't have changed).
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                isLowPowerMode = getLowPowerModeEnabled()
+                            }
+                        }
+                    }, label: {
+                        Image(systemName: isLowPowerMode ? "leaf.circle.fill" : "leaf.circle")
+                            .font(.system(size: 14, weight: .light))
+                            .frame(width: 14, height: 14, alignment: .center)
+                            .foregroundColor(isLowPowerMode ? .myGreen : (overLowPowerButton ? .accentColor : .secondary))
+                            .opacity(overLowPowerButton || isLowPowerMode ? 1 : 0.7)
+                    })
+                    .focusable(false)
+                    .buttonStyle(PlainButtonStyle())
+                    .help("Toggle Low Power Mode".local)
+                    .onHover{ hovering in overLowPowerButton = hovering }
                     Spacer()
                     if nearCast {
                         Button(action: {
@@ -390,7 +475,7 @@ struct popover: View {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                     allDevices = AirBatteryModel.getAll()
                                     let ibStatus = InternalBattery.status
-                                    if ibStatus.hasBattery { allDevices.insert(ib2ab(ibStatus), at: 0) }
+                                    if ibStatus.hasBattery { allDevices = insertInternalBattery(into: allDevices, entry: ib2ab(ibStatus)) }
                                     allNearcast = getFiles(withExtension: "json", in: ncFolder)
                                 }
                             }
@@ -486,6 +571,8 @@ struct popover: View {
                                     if allDevices[index].hasBattery {
                                         if overStack == index {
                                             HStack(spacing: 3) {
+                                                // Other devices show up to 6 action icons here, so their "mins ago"
+                                                // text is dropped to make room. The Mac row has fewer icons.
                                                 if allDevices[index].deviceID == "@MacInternalBattery" {
                                                     if let power = chargePowerText(InternalBattery.status) {
                                                         // Not enough room for the label next to the power, show only the time
@@ -503,16 +590,6 @@ struct popover: View {
                                                         .font(.system(size: 11, weight: .medium))
                                                         .foregroundColor(.secondary)
                                                         .fixedSize()
-                                                } else {
-                                                    if allDevices[index].realUpdate != 0.0 {
-                                                        Text("\(Int((Date().timeIntervalSince1970 - allDevices[index].realUpdate) / 60))"+" mins ago".local)
-                                                            .font(.system(size: 11, weight: .medium))
-                                                            .foregroundColor(.secondary)
-                                                    } else {
-                                                        Text("\(Int((Date().timeIntervalSince1970 - allDevices[index].lastUpdate) / 60))"+" mins ago".local)
-                                                            .font(.system(size: 11, weight: .medium))
-                                                            .foregroundColor(.secondary)
-                                                    }
                                                 }
                                                 Spacer().frame(width: 1)
                                                 if !alertList.map({$0.name}).contains(allDevices[index].deviceName) {
@@ -586,24 +663,85 @@ struct popover: View {
                                                         .onHover{ hovering in overPinButton = hovering }
                                                     }
                                                 }
-                                                if #available(macOS 14, *) {
-                                                    Button(action: {
-                                                        copyToClipboard(allDevices[index].deviceName)
-                                                        DispatchQueue.main.async {
-                                                            _ = createAlert(title: "Device Name Copied".local,
-                                                                            message: String(format: "Device name \"%@\" has been copied to the clipboard.".local, allDevices[index].deviceName),
-                                                                            button1: "OK".local).runModal()
-                                                        }
-                                                    }, label: {
-                                                        Image("list.clipboard.fill.circle")
-                                                            .resizable().scaledToFit()
-                                                            .frame(width: 18, height: 18, alignment: .center)
-                                                            .foregroundColor(overCopyButton ? .accentColor : .secondary)
-                                                    })
-                                                    .buttonStyle(PlainButtonStyle())
-                                                    .onHover{ hovering in overCopyButton = hovering }
+                                                // Minimum deployment target is macOS 14.0, so the createAlert/.runModal-based
+                                                // copy-confirmation path used below is always available now.
+                                                Button(action: {
+                                                    copyToClipboard(allDevices[index].deviceName)
+                                                    DispatchQueue.main.async {
+                                                        _ = createAlert(title: "Device Name Copied".local,
+                                                                        message: String(format: "Device name \"%@\" has been copied to the clipboard.".local, allDevices[index].deviceName),
+                                                                        button1: "OK".local).runModal()
+                                                    }
+                                                }, label: {
+                                                    Image("list.clipboard.fill.circle")
+                                                        .resizable().scaledToFit()
+                                                        .frame(width: 18, height: 18, alignment: .center)
+                                                        .foregroundColor(overCopyButton ? .accentColor : .secondary)
+                                                })
+                                                .buttonStyle(PlainButtonStyle())
+                                                .onHover{ hovering in overCopyButton = hovering }
+                                                // Fixes issue #108 (feature request): copy the device's
+                                                // identifier. Note this is a real MAC address for classic
+                                                // Bluetooth HID devices (mice/keyboards read via logReader.sh),
+                                                // but a CoreBluetooth-assigned UUID for BLE devices (AirPods,
+                                                // etc. - Apple hides the real BLE MAC from apps for privacy)
+                                                // and a UDID for iDevices, so it's labeled "Device ID" rather
+                                                // than universally "MAC Address" to stay accurate.
+                                                Button(action: {
+                                                    copyToClipboard(allDevices[index].deviceID)
+                                                    DispatchQueue.main.async {
+                                                        _ = createAlert(title: "Device ID Copied".local,
+                                                                        message: String(format: "Device ID \"%@\" has been copied to the clipboard.".local, allDevices[index].deviceID),
+                                                                        button1: "OK".local).runModal()
+                                                    }
+                                                }, label: {
+                                                    Image(systemName: "number.circle")
+                                                        .resizable().scaledToFit()
+                                                        .frame(width: 18, height: 18, alignment: .center)
+                                                        .foregroundColor(overIDButton ? .accentColor : .secondary)
+                                                })
+                                                .buttonStyle(PlainButtonStyle())
+                                                .help("Copy Device ID".local)
+                                                .onHover{ hovering in overIDButton = hovering }
+
+                                                // Fixes issue #135 (feature request): mute/unmute this device's
+                                                // low-battery alerts without hiding it entirely. Reuses the
+                                                // Device.isPaused field (was declared and already checked by
+                                                // AirBatteryModel.checkLowBattery(), but nothing ever set it -
+                                                // see the mutedDevices check added there) via a persisted
+                                                // "mutedDevices" list, matching the existing pinnedList/
+                                                // blackList pattern.
+                                                if allDevices[index].hasBattery {
+                                                    if !mutedDevices.contains(allDevices[index].deviceName) {
+                                                        Button(action: {
+                                                            mutedDevices = (ud.object(forKey: "mutedDevices") ?? []) as! [String]
+                                                            mutedDevices.append(allDevices[index].deviceName)
+                                                            ud.set(mutedDevices, forKey: "mutedDevices")
+                                                        }, label: {
+                                                            Image(systemName: "speaker.wave.2.circle")
+                                                                .resizable().scaledToFit()
+                                                                .frame(width: 18, height: 18, alignment: .center)
+                                                                .foregroundColor(overMuteButton ? .accentColor : .secondary)
+                                                        })
+                                                        .buttonStyle(PlainButtonStyle())
+                                                        .help("Mute low battery alerts for this device".local)
+                                                        .onHover{ hovering in overMuteButton = hovering }
+                                                    } else {
+                                                        Button(action: {
+                                                            mutedDevices = (ud.object(forKey: "mutedDevices") ?? []) as! [String]
+                                                            mutedDevices.removeAll(where: { $0 == allDevices[index].deviceName })
+                                                            ud.set(mutedDevices, forKey: "mutedDevices")
+                                                        }, label: {
+                                                            Image(systemName: "speaker.slash.circle")
+                                                                .resizable().scaledToFit()
+                                                                .frame(width: 18, height: 18, alignment: .center)
+                                                                .foregroundColor(overMuteButton ? .accentColor : .secondary)
+                                                        })
+                                                        .buttonStyle(PlainButtonStyle())
+                                                        .help("Unmute low battery alerts for this device".local)
+                                                        .onHover{ hovering in overMuteButton = hovering }
+                                                    }
                                                 }
-                                                
                                                 if allDevices[index].deviceID != "@MacInternalBattery" {
                                                     Button(action: {
                                                         hidden.append(index)
@@ -696,15 +834,13 @@ struct popover: View {
                                             Label("Transfer to...", systemImage: "")
                                         })
                                         Divider()
-                                        if #available(macOS 14, *) {
-                                            Button(action: {
-                                                copyToClipboard(allDevices[index].deviceName)
-                                                _ = createAlert(title: "Device Name Copied".local,
-                                                                message: String(format: "Device name: \"%@\" has been copied to the clipboard.".local, allDevices[index].deviceName),
-                                                                button1: "OK".local).runModal()
-                                            }) {
-                                                Label("Copy Device Name", systemImage: "")
-                                            }
+                                        Button(action: {
+                                            copyToClipboard(allDevices[index].deviceName)
+                                            _ = createAlert(title: "Device Name Copied".local,
+                                                            message: String(format: "Device name: \"%@\" has been copied to the clipboard.".local, allDevices[index].deviceName),
+                                                            button1: "OK".local).runModal()
+                                        }) {
+                                            Label("Copy Device Name", systemImage: "")
                                         }
                                         Button(action: {
                                             hidden.append(index)
@@ -808,13 +944,18 @@ struct popover: View {
         .frame(width: 352)
         .onAppear { allDevices = allDevice }
         .onReceive(mainTimer) { t in
+            // Keeps the Low Power Mode button (issue #129/#117) in sync if it's changed from
+            // somewhere other than this button - Control Center, System Settings, etc. - since
+            // there's no dedicated notification wired up here; mainTimer already ticks
+            // regularly, so piggybacking on it avoids adding a second observer.
+            isLowPowerMode = getLowPowerModeEnabled()
             if !fromDock && menuPopover.isShown {
                 allDevices = AirBatteryModel.getAll()
                 hiddenDevices = AirBatteryModel.getBlackList()
                 hidden = [Int]()
                 hidden2 = [Int]()
                 let ibStatus = InternalBattery.status
-                if ibStatus.hasBattery { allDevices.insert(ib2ab(ibStatus), at: 0) }
+                if ibStatus.hasBattery { allDevices = insertInternalBattery(into: allDevices, entry: ib2ab(ibStatus)) }
                 if nearCast { allNearcast = getFiles(withExtension: "json", in: ncFolder) }
             }
         }
@@ -827,6 +968,7 @@ struct nearcastView: View {
     @Binding var overStackNC: Int
     @State private var overStack = -1
     @State private var overCopyButton = false
+    @State private var overIDButton = false
     @State private var overAlertButton = false
     @State private var overPinButton = false
     @State private var alertList = ud.get(objectType: [btAlert].self, forKey: "alertList") ?? []
@@ -938,21 +1080,33 @@ struct nearcastView: View {
                                         .buttonStyle(PlainButtonStyle())
                                         .onHover{ hovering in overPinButton = hovering }
                                     }
-                                    if #available(macOS 14, *) {
-                                        Button(action: {
-                                            copyToClipboard(devices[index].deviceName)
-                                            _ = createAlert(title: "Device Name Copied".local,
-                                                            message: String(format: "Device name \"%@\" has been copied to the clipboard.".local, devices[index].deviceName),
-                                                            button1: "OK".local).runModal()
-                                        }, label: {
-                                            Image("list.clipboard.fill.circle")
-                                                .resizable().scaledToFit()
-                                                .frame(width: 18, height: 18, alignment: .center)
-                                                .foregroundColor(overCopyButton ? .accentColor : .secondary)
-                                        })
-                                        .buttonStyle(PlainButtonStyle())
-                                        .onHover{ hovering in overCopyButton = hovering }
-                                    }
+                                    Button(action: {
+                                        copyToClipboard(devices[index].deviceName)
+                                        _ = createAlert(title: "Device Name Copied".local,
+                                                        message: String(format: "Device name \"%@\" has been copied to the clipboard.".local, devices[index].deviceName),
+                                                        button1: "OK".local).runModal()
+                                    }, label: {
+                                        Image("list.clipboard.fill.circle")
+                                            .resizable().scaledToFit()
+                                            .frame(width: 18, height: 18, alignment: .center)
+                                            .foregroundColor(overCopyButton ? .accentColor : .secondary)
+                                    })
+                                    .buttonStyle(PlainButtonStyle())
+                                    .onHover{ hovering in overCopyButton = hovering }
+                                    Button(action: {
+                                        copyToClipboard(devices[index].deviceID)
+                                        _ = createAlert(title: "Device ID Copied".local,
+                                                        message: String(format: "Device ID \"%@\" has been copied to the clipboard.".local, devices[index].deviceID),
+                                                        button1: "OK".local).runModal()
+                                    }, label: {
+                                        Image(systemName: "number.circle")
+                                            .resizable().scaledToFit()
+                                            .frame(width: 18, height: 18, alignment: .center)
+                                            .foregroundColor(overIDButton ? .accentColor : .secondary)
+                                    })
+                                    .buttonStyle(PlainButtonStyle())
+                                    .help("Copy Device ID".local)
+                                    .onHover{ hovering in overIDButton = hovering }
                                 }
                             }
                         } else {
@@ -968,14 +1122,24 @@ struct nearcastView: View {
                     }
                     .padding(.vertical, 6)
                     .padding(.horizontal, 10)
-                    .onHover{ hovering in overStack = index }
+                    // Fixes issue #159 (hover highlight doesn't clear after moving the cursor
+                    // out). This was unconditionally setting overStack = index regardless of
+                    // the hovering value onHover passes in, so moving the mouse AWAY from this
+                    // row re-fired onHover with hovering=false but still set overStack right
+                    // back to this same index instead of clearing it - the highlight never
+                    // went away. Every other onHover in this file correctly branches on
+                    // hovering; this one just wasn't.
+                    .onHover{ hovering in overStack = hovering ? index : -1 }
                 }
                 .background((overStackNC == mainIndex && overStack == index) ? Color.blackWhite.opacity(0.15) : .clear)
                 .clipShape(RoundedCornersShape(radius: 2.9, corners: index == devices.count - 1 ? [.bottomLeft, .bottomRight] : (index == 0 ? [.topLeft, .topRight] : [])))
                 if index != devices.count-1 { Divider() }
             }
         }
-        .onHover{ hovering in overStackNC = mainIndex }
+        // Same bug as overStack above: was unconditionally setting overStackNC = mainIndex on
+        // every hover event, including the one that fires when the cursor leaves, so the
+        // section-level highlight never cleared either.
+        .onHover{ hovering in overStackNC = hovering ? mainIndex : -1 }
         .padding(.horizontal, 6)
         .overlay(
             RoundedRectangle(cornerRadius: 4)
@@ -994,15 +1158,121 @@ func openAboutPanel() {
     NSApp.orderFrontStandardAboutPanel(nil)
 }
 
+// Fixes a reported bug: with a custom "Sort Devices By" order picked (e.g. Battery Level
+// High to Low), the menu bar dropdown still always showed the Mac's own battery first no
+// matter what. AirBatteryModel.getAll() correctly sorts every OTHER device, but every call
+// site then manually did `allDevices.insert(ib2ab(ibStatus), at: 0)` afterward - hard-pinning
+// the Mac's entry to the front and silently overriding whatever sort order was actually
+// chosen. This inserts it at the position the current sort order would actually put it,
+// falling back to the old "always first" behavior only when sortOrder is "default".
+func insertInternalBattery(into devices: [Device], entry: Device) -> [Device] {
+    var list = devices
+    let sortOrder = ud.string(forKey: "deviceSortOrder") ?? "default"
+    switch sortOrder {
+    case "name":
+        let idx = list.firstIndex(where: { entry.deviceName.localizedCaseInsensitiveCompare($0.deviceName) == .orderedAscending }) ?? list.count
+        list.insert(entry, at: idx)
+    case "level_asc":
+        let idx = list.firstIndex(where: { entry.batteryLevel < $0.batteryLevel }) ?? list.count
+        list.insert(entry, at: idx)
+    case "level_desc":
+        let idx = list.firstIndex(where: { entry.batteryLevel > $0.batteryLevel }) ?? list.count
+        list.insert(entry, at: idx)
+    default:
+        list.insert(entry, at: 0)
+    }
+    return list
+}
+
+// Was: relied entirely on NSApp.sendAction(Selector(("showSettingsWindow:")) / "showPreferencesWindow:")
+// to open the SwiftUI `Settings { SettingsView() }` scene declared in AirBatteryApp.swift. That
+// selector is populated by AppKit's own command-routing machinery, which SwiftUI wires up as part
+// of building the app's main menu — but AirBatteryApp's Scene body declares ONLY a Settings scene
+// (no WindowGroup at all, since this is a menu-bar-only utility driven by a manual NSStatusItem).
+// Confirmed by testing: even after temporarily promoting the app to .regular (so a Dock icon
+// appears, proving that part works), sendAction still found no responder for that selector and
+// nothing opened — for an app with no WindowGroup scene, that command machinery apparently never
+// gets fully built, regardless of activation policy. Rather than keep fighting that indirection,
+// this now builds and shows the Settings window directly (SettingsWindowController below), reusing
+// the exact same SettingsView() content the old Settings scene displayed. This sidesteps AppKit's
+// menu-command routing entirely, so it works the same regardless of activation policy or whether
+// any menu bar exists.
 func openSettingPanel() {
     dockWindow.orderOut(nil)
+    let showOn = UserDefaults.standard.string(forKey: "showOn") ?? "sbar"
+    if showOn != "dock" && showOn != "both" { NSApp.setActivationPolicy(.regular) }
     NSApp.activate(ignoringOtherApps: true)
-    if #available(macOS 14, *) {
-        NSApp.mainMenu?.items.first?.submenu?.item(at: 2)?.performAction()
-    }else if #available(macOS 13, *) {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    } else {
-        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+    SettingsWindowController.shared.open()
+}
+
+// Hosts SettingsView() in a plain, manually-managed NSWindow instead of going through SwiftUI's
+// Settings scene / showSettingsWindow: command routing (see the comment on openSettingPanel()
+// above for why). Kept as a singleton so repeated clicks on the gear icon just re-show the same
+// window instead of creating duplicates.
+class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    static let shared = SettingsWindowController()
+
+    private convenience init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 380),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "AirBattery Settings".local
+        window.titlebarSeparatorStyle = .none
+        // NavigationSplitView attaches a real toolbar (for the sidebar-toggle button), which
+        // makes macOS merge the title bar and toolbar into one combined "unified" bar - taller
+        // than a plain title bar with no toolbar. .unifiedCompact is Apple's own shorter
+        // variant of that same merged bar (visible in apps like Notes/Reminders), instead of
+        // the default, roomier .unified.
+        window.toolbarStyle = .unifiedCompact
+        window.isReleasedWhenClosed = false
+        window.center()
+        // Liquid Glass pass: the window was previously left at its default opaque white
+        // background, so SettingsView() just sat on a flat panel with no translucency at
+        // all - unlike the main popover (see BlurView usage in popover below), which already
+        // used a real NSVisualEffectView material and so already picks up macOS's native
+        // glass rendering. Making the window itself non-opaque with a clear background lets
+        // an NSVisualEffectView underneath actually show its blur-behind-window effect,
+        // matching the popover's look and letting Settings pick up the same system-level
+        // Liquid Glass treatment on macOS 26+ automatically - no hand-drawn "glass" effect
+        // needed, since this is a real system material like the popover already uses.
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.contentView = NSHostingView(rootView: ZStack {
+            BlurView(material: .popover)
+            SettingsView()
+        })
+        self.init(window: window)
+        window.delegate = self
+        // Mirrors the split-view sizing constraints the old WindowAccessor-based Settings scene
+        // applied once its window appeared, so the sidebar keeps behaving the same way.
+        DispatchQueue.main.async {
+            if let nsSplitView = findNSSplitVIew(view: window.contentView),
+               let controller = nsSplitView.delegate as? NSSplitViewController {
+                controller.splitViewItems.first?.canCollapse = false
+                controller.splitViewItems.first?.minimumThickness = 175
+                controller.splitViewItems.first?.maximumThickness = 175
+            }
+            // NavigationSplitView installs its own real NSToolbar on this window (with the
+            // sidebar-collapse button on it) once it's laid out - the SwiftUI-level
+            // .toolbar(.hidden, for: .windowToolbar) modifier in SettingsView doesn't reach
+            // that, since it lives on the actual NSWindow, not inside SwiftUI's own toolbar
+            // content. Clearing it directly here removes the button for good.
+            window.toolbar = nil
+        }
+    }
+
+    func open() {
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Drop the Dock icon back out again once Settings closes, unless the user's Dock
+        // display preference actually wants it to stay (showOn == "dock"/"both").
+        let showOn = UserDefaults.standard.string(forKey: "showOn") ?? "sbar"
+        if showOn != "dock" && showOn != "both" { NSApp.setActivationPolicy(.accessory) }
     }
 }
 

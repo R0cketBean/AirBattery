@@ -174,18 +174,18 @@ class AlertWindowController {
     var window: NNSWindow?
 
     func showAlert(with alert: btAlert, iconName: String, onConfirm: @escaping (btAlert) -> Void, onCancel: @escaping () -> Void) {
-        // 创建 AlertInputView，传入可选的 btAlert 对象
+        // Create the AlertInputView, passing in the optional btAlert object
         let alertView = AlertInputView(alert: alert, iconName: iconName, onConfirm: { newAlert in
-            // 确认操作后，关闭窗口并返回数据
+            // After confirming, close the window and return the data
             self.window?.close()
             onConfirm(newAlert)
         }, onCancel: {
-            // 取消操作，关闭窗口
+            // Cancel action, close the window
             self.window?.close()
             onCancel()
         })
 
-        // 创建窗口
+        // Create the window
         let window = NNSWindow(contentViewController: NSHostingController(rootView: alertView))
         window.setContentSize(NSSize(width: 360, height: 334))
         window.title = "Create Battery Alert"
@@ -198,11 +198,11 @@ class AlertWindowController {
         window.isMovableByWindowBackground = true
         window.center()
 
-        // 显示窗口
+        // Show the window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        // 保存窗口引用，避免窗口被销毁
+        // Keep a reference to the window so it isn't deallocated
         self.window = window
     }
 }
@@ -219,10 +219,19 @@ func batteryAlert() {
     let ncFiles = getFiles(withExtension: "json", in: ncFolder)
     for ncFile in ncFiles { allDevices += AirBatteryModel.ncGetAll(url: ncFile) }
     
+    // Fixes issue #78 (notifications never arriving): both cooldown checks below used
+    // "return" instead of "continue". Since this is inside a "for device in allDevices"
+    // loop, "return" doesn't just skip the current device - it exits the ENTIRE
+    // batteryAlert() function immediately, abandoning every other device still left to check
+    // in this pass. A notification's own cooldown (set right after it fires, to avoid
+    // re-notifying every scan) would then silently block every device that came after it in
+    // allDevices for as long as that first device stayed low/full - which, for something
+    // that just sits at a low charge, could be indefinitely. Fixed to "continue" so a
+    // cooldown on one device only skips that device, not the whole check.
     for device in allDevices.filter({ alertList.map({$0.name}).contains($0.deviceName) }) {
         if let alert = alertList.first(where: { $0.name == device.deviceName }) {
             if device.batteryLevel < alert.low && device.isCharging == 0 && alert.lowOn {
-                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { return }
+                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { continue }
                 let title = "Low Battery".local
                 let body = String(format: "\"%@\" remaining battery %d%%".local, device.deviceName, device.batteryLevel)
                 createNotification(title: title, message: body, alertSound: alert.lowSound, delay: true, info: device.deviceName)
@@ -231,7 +240,7 @@ func batteryAlert() {
                 }
             }
             if device.batteryLevel > alert.full && device.isCharging != 0 && alert.fullOn {
-                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { return }
+                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { continue }
                 let title = "Fully Charged".local
                 let body = String(format: "\"%@\" battery has reached %d%%".local, device.deviceName, device.batteryLevel)
                 createNotification(title: title, message: body, alertSound: alert.fullSound, delay: true, info: device.deviceName)

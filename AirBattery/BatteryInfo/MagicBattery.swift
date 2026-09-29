@@ -95,8 +95,11 @@ class MagicBattery {
            let SPBluetoothDataTypeRaw = json["SPBluetoothDataType"] as? [Any],
            let SPBluetoothDataType = SPBluetoothDataTypeRaw[0] as? [String: Any]{
             if let device_connected = SPBluetoothDataType["device_connected"] as? [Any]{
+                // The 4 force-casts (as!) on `device` in this file were replaced with safe
+                // casts that just skip a malformed entry instead of crashing this whole lookup
+                // if system_profiler's JSON shape ever surprises us for one device.
                 for device in device_connected{
-                    let d = device as! [String: Any]
+                    guard let d = device as? [String: Any] else { continue }
                     if let n = d.keys.first, let info = d[n] as? [String: Any] {
                         if let id = info["device_address"] as? String,
                            let type = info["device_minorType"] as? String{
@@ -115,7 +118,7 @@ class MagicBattery {
            let SPBluetoothDataType = SPBluetoothDataTypeRaw[0] as? [String: Any]{
             if let device_connected = SPBluetoothDataType["device_connected"] as? [Any]{
                 for device in device_connected{
-                    let d = device as! [String: Any]
+                    guard let d = device as? [String: Any] else { continue }
                     if let n = d.keys.first, let info = d[n] as? [String: Any] {
                         if let id = info["device_productID"] as? String,
                            let type = info["device_minorType"] as? String{
@@ -135,27 +138,60 @@ class MagicBattery {
         var percent = 0
         var productName = ""
         let lastUpdate = Date().timeIntervalSince1970
+        // Was force-casting (as!) every IORegistryEntryCreateCFProperty read below. These
+        // properties are read from the IOKit registry, and while they normally come back as
+        // the expected type, InternalBattery.swift already treats the exact same kind of
+        // registry read as untrusted (using safe `as?` casts) for good reason - a mismatched
+        // type here on some hardware/macOS combination would crash this whole background scan
+        // outright instead of just skipping that one property, same class of bug already fixed
+        // elsewhere in this file's siblings. Switched to safe casts so a surprising property
+        // type just leaves that one field at its default instead of taking down the scan.
         if let productProperty = IORegistryEntryCreateCFProperty(object, "DeviceAddress" as CFString, kCFAllocatorDefault, 0) {
-            mac = productProperty.takeRetainedValue() as! String
-            mac = mac.replacingOccurrences(of:"-", with:":").uppercased()
+            if let value = productProperty.takeRetainedValue() as? String {
+                mac = value.replacingOccurrences(of:"-", with:":").uppercased()
+            }
         }
         if let percentProperty = IORegistryEntryCreateCFProperty(object, "BatteryStatusFlags" as CFString, kCFAllocatorDefault, 0) {
-            status = percentProperty.takeRetainedValue() as! Int
-            if status == 4 { status = 0 }
+            if let value = percentProperty.takeRetainedValue() as? Int {
+                status = value == 4 ? 0 : value
+                // Investigating issue #113 (Magic Trackpad shows a charging bolt when it isn't
+                // charging): this "value == 4 -> 0, everything else passed straight through"
+                // mapping is pre-existing/upstream, not something added this session. Anywhere
+                // isCharging is displayed, the app just checks "!= 0" (see ContentView.swift),
+                // so ANY nonzero BatteryStatusFlags value shows the charging bolt - and I can't
+                // find authoritative documentation of what each flag value actually means for
+                // this specific driver, or confirm it's the same for trackpads as for
+                // keyboards/mice (which aren't reported broken). Guessing at the "correct" bit
+                // here risks trading a false-charging bug for a false-not-charging one on other
+                // devices. Logging the real raw value instead so the actual fix can be based on
+                // real hardware data rather than a guess - see the note where this is sent.
+                NSLog("[AirBattery][debug #113] BatteryStatusFlags raw value = \(value) for device \(mac)")
+            }
         }
         if let percentProperty = IORegistryEntryCreateCFProperty(object, "BatteryPercent" as CFString, kCFAllocatorDefault, 0) {
-            percent = percentProperty.takeRetainedValue() as! Int
+            percent = (percentProperty.takeRetainedValue() as? Int) ?? percent
         }
-        if let productProperty = IORegistryEntryCreateCFProperty(object, "Product" as CFString, kCFAllocatorDefault, 0) {
-            productName = productProperty.takeRetainedValue() as! String
+        if let productProperty = IORegistryEntryCreateCFProperty(object, "Product" as CFString, kCFAllocatorDefault, 0),
+           let value = productProperty.takeRetainedValue() as? String {
+            productName = value
             if productName.contains("Trackpad") { type = "Trackpad" }
             if productName.contains("Keyboard") { type = "Keyboard" }
             if productName.contains("Mouse") { type = "MMouse" }
+            // Fixes issue #85 (feature request): a Siri Remote paired directly to the Mac
+            // isn't special-cased anywhere in this app, but if macOS lets it pair this way at
+            // all, it should already surface through this same generic HID battery path (the
+            // same one that already picks up Bose speakers and Logitech mice with no
+            // per-device code) - it just fell through to the "?" default icon since nothing
+            // recognized its type. This can't be tested against real hardware in this sandbox,
+            // so it's unverified, but low-risk: it only changes classification for a product
+            // name/type actually containing "Remote".
+            if productName.contains("Remote") { type = "Remote" }
             if type == "hid" {
                 type = getDeviceType(mac, type)
                 if type.contains("Trackpad") { type = "Trackpad" }
                 if type.contains("Keyboard") { type = "Keyboard" }
                 if type.contains("Mouse") { type = "MMouse" }
+                if type.contains("Remote") { type = "Remote" }
             } else {
                 productName = getDeviceName(mac, productName)
             }
@@ -168,12 +204,9 @@ class MagicBattery {
     func getMagicBattery() {
         var serialPortIterator = io_iterator_t()
         var object : io_object_t
-        let masterPort: mach_port_t
-        if #available(macOS 12.0, *) {
-            masterPort = kIOMainPortDefault // New name in macOS 12 and higher
-        } else {
-            masterPort = kIOMasterPortDefault // Old name in macOS 11 and lower
-        }
+        // Minimum deployment target is now macOS 14.0, so the pre-macOS-12 fallback to the old
+        // kIOMasterPortDefault name is unreachable dead code - simplified to just the current name.
+        let masterPort: mach_port_t = kIOMainPortDefault
         let matchingDict : CFDictionary = IOServiceMatching("AppleDeviceManagementHIDEventService")
         let kernResult = IOServiceGetMatchingServices(masterPort, matchingDict, &serialPortIterator)
         
@@ -190,8 +223,7 @@ class MagicBattery {
     func getOldMagicKeyboard() {
         var serialPortIterator = io_iterator_t()
         var object : io_object_t
-        let masterPort: mach_port_t
-        if #available(macOS 12.0, *) { masterPort = kIOMainPortDefault } else { masterPort = kIOMasterPortDefault }
+        let masterPort: mach_port_t = kIOMainPortDefault
         let matchingDict : CFDictionary = IOServiceMatching("AppleBluetoothHIDKeyboard")
         let kernResult = IOServiceGetMatchingServices(masterPort, matchingDict, &serialPortIterator)
         if KERN_SUCCESS == kernResult {
@@ -207,8 +239,7 @@ class MagicBattery {
     func getOldMagicTrackpad() {
         var serialPortIterator = io_iterator_t()
         var object : io_object_t
-        let masterPort: mach_port_t
-        if #available(macOS 12.0, *) { masterPort = kIOMainPortDefault } else { masterPort = kIOMasterPortDefault }
+        let masterPort: mach_port_t = kIOMainPortDefault
         let matchingDict : CFDictionary = IOServiceMatching("BNBTrackpadDevice")
         let kernResult = IOServiceGetMatchingServices(masterPort, matchingDict, &serialPortIterator)
         if KERN_SUCCESS == kernResult {
@@ -224,8 +255,7 @@ class MagicBattery {
     func getOldMagicMouse() {
         var serialPortIterator = io_iterator_t()
         var object : io_object_t
-        let masterPort: mach_port_t
-        if #available(macOS 12.0, *) { masterPort = kIOMainPortDefault } else { masterPort = kIOMasterPortDefault }
+        let masterPort: mach_port_t = kIOMainPortDefault
         let matchingDict : CFDictionary = IOServiceMatching("BNBMouseDevice")
         let kernResult = IOServiceGetMatchingServices(masterPort, matchingDict, &serialPortIterator)
         if KERN_SUCCESS == kernResult {
@@ -246,8 +276,20 @@ class MagicBattery {
         let SPBluetoothDataType = SPBluetoothDataTypeRaw[0] as? [String: Any]{
             if let device_connected = SPBluetoothDataType["device_connected"] as? [Any]{
                 for device in device_connected{
-                    let d = device as! [String: Any]
+                    guard let d = device as? [String: Any] else { continue }
                     if let n = d.keys.first, let info = d[n] as? [String: Any] {
+                        // Fixes issue #106 (Logitech MX Anywhere 3 intermittently shown split
+                        // into a fake "Case"/Left/Right AirPods-style trio with an impossible
+                        // 108% level): unlike its sibling getOtherBTBattery() just below (which
+                        // explicitly excludes device_vendorID == "0x004C", i.e. Apple, since
+                        // Apple accessories are meant to be handled here instead), this
+                        // function had no vendor check at all - any device_connected entry that
+                        // happens to carry device_batteryLevelCase/Left/Right keys got run
+                        // through this AirPods-specific Case/Left/Right splitting logic no
+                        // matter who made it. Gating on Apple's vendor ID here (mirroring the
+                        // existing exclusion in getOtherBTBattery()) keeps non-Apple devices out
+                        // of this path entirely.
+                        guard (info["device_vendorID"] as? String) == "0x004C" else { continue }
                         var productID = "200e"
                         var mainDevice: Device?
                         var subDevices: [Device] = []
@@ -321,7 +363,7 @@ class MagicBattery {
         let SPBluetoothDataType = SPBluetoothDataTypeRaw[0] as? [String: Any]{
             if let device_connected = SPBluetoothDataType["device_connected"] as? [Any]{
                 for device in device_connected{
-                    let d = device as! [String: Any]
+                    guard let d = device as? [String: Any] else { continue }
                     if let n = d.keys.first, let info = d[n] as? [String: Any] {
                         if let level = info["device_batteryLevelMain"] as? String,
                            let id = info["device_address"] as? String,

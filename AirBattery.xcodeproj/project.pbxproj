@@ -31,7 +31,6 @@
 		184ADF042DDB6C9F004791F0 /* GroupForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184ADEF72DDB6C9F004791F0 /* GroupForm.swift */; };
 		184ADF052DDB6C9F004791F0 /* InfoButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184ADEF82DDB6C9F004791F0 /* InfoButton.swift */; };
 		184ADF062DDB6C9F004791F0 /* Multipeer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184ADEFA2DDB6C9F004791F0 /* Multipeer.swift */; };
-		184ADF072DDB6C9F004791F0 /* Sparkle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184ADEFC2DDB6C9F004791F0 /* Sparkle.swift */; };
 		184ADF082DDB6C9F004791F0 /* Supports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184ADEFD2DDB6C9F004791F0 /* Supports.swift */; };
 		184ADF092DDB6C9F004791F0 /* WindowAccessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 184ADEFE2DDB6C9F004791F0 /* WindowAccessor.swift */; };
 		184ADF0A2DDB6C9F004791F0 /* logReader.sh in Resources */ = {isa = PBXBuildFile; fileRef = 184ADEF92DDB6C9F004791F0 /* logReader.sh */; };
@@ -55,7 +54,6 @@
 		18B8E5C72B83C32100A20D03 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 1841D47A2AA8DEF20022A1BE /* Localizable.strings */; };
 		18B8E5C92B83C9AD00A20D03 /* BatteryWidget2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B8E5C82B83C9AD00A20D03 /* BatteryWidget2.swift */; };
 		18BBC0672C16F4F900D9FE76 /* MultipeerKit in Frameworks */ = {isa = PBXBuildFile; productRef = 18BBC0662C16F4F900D9FE76 /* MultipeerKit */; };
-		18E6E36E2C0BA6A800A666CE /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 18E6E36D2C0BA6A800A666CE /* Sparkle */; };
 		18E8A8DB2DDB8D4E002E9A4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1841D4522AA6071D0022A1BE /* Assets.xcassets */; };
 		18EF7E632C141CB70065A9E1 /* BatteryWidget3.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EF7E622C1414A50065A9E1 /* BatteryWidget3.swift */; };
 		18F615F32B763DD800873AA4 /* BLEBattery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F615F22B763DD800873AA4 /* BLEBattery.swift */; };
@@ -144,7 +142,6 @@
 		184ADEF92DDB6C9F004791F0 /* logReader.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = logReader.sh; sourceTree = "<group>"; };
 		184ADEFA2DDB6C9F004791F0 /* Multipeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Multipeer.swift; sourceTree = "<group>"; };
 		184ADEFB2DDB6C9F004791F0 /* Scriptable.sdef */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = Scriptable.sdef; sourceTree = "<group>"; };
-		184ADEFC2DDB6C9F004791F0 /* Sparkle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sparkle.swift; sourceTree = "<group>"; };
 		184ADEFD2DDB6C9F004791F0 /* Supports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Supports.swift; sourceTree = "<group>"; };
 		184ADEFE2DDB6C9F004791F0 /* WindowAccessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowAccessor.swift; sourceTree = "<group>"; };
 		185AE80D2BA6041400FE1AA2 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -186,7 +183,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				18E6E36E2C0BA6A800A666CE /* Sparkle in Frameworks */,
 				18BBC0672C16F4F900D9FE76 /* MultipeerKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -292,7 +288,6 @@
 				184ADEF92DDB6C9F004791F0 /* logReader.sh */,
 				184ADEFA2DDB6C9F004791F0 /* Multipeer.swift */,
 				184ADEFB2DDB6C9F004791F0 /* Scriptable.sdef */,
-				184ADEFC2DDB6C9F004791F0 /* Sparkle.swift */,
 				184ADEFD2DDB6C9F004791F0 /* Supports.swift */,
 				184ADEFE2DDB6C9F004791F0 /* WindowAccessor.swift */,
 			);
@@ -384,7 +379,6 @@
 			);
 			name = AirBattery;
 			packageProductDependencies = (
-				18E6E36D2C0BA6A800A666CE /* Sparkle */,
 				18BBC0662C16F4F900D9FE76 /* MultipeerKit */,
 			);
 			productName = DockBattery;
@@ -467,7 +461,6 @@
 			);
 			mainGroup = 1841D4422AA6071C0022A1BE;
 			packageReferences = (
-				18E6E36C2C0BA6A800A666CE /* XCRemoteSwiftPackageReference "Sparkle" */,
 				18BBC0652C16F4F900D9FE76 /* XCRemoteSwiftPackageReference "MultipeerKit" */,
 				184ADED82DDB2C8A004791F0 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
 			);
@@ -545,7 +538,6 @@
 				184ADF042DDB6C9F004791F0 /* GroupForm.swift in Sources */,
 				184ADF052DDB6C9F004791F0 /* InfoButton.swift in Sources */,
 				184ADF062DDB6C9F004791F0 /* Multipeer.swift in Sources */,
-				184ADF072DDB6C9F004791F0 /* Sparkle.swift in Sources */,
 				184ADF082DDB6C9F004791F0 /* Supports.swift in Sources */,
 				184ADF092DDB6C9F004791F0 /* WindowAccessor.swift in Sources */,
 				1819E94C2CC2A8C2007B95E9 /* BatteryAlertView.swift in Sources */,
@@ -647,7 +639,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.4.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lihaoyun6.AirBatteryHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -681,7 +673,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.4.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lihaoyun6.AirBatteryHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -744,7 +736,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -801,7 +793,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -835,7 +827,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lihaoyun6.AirBattery;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -869,7 +861,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lihaoyun6.AirBattery;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -887,7 +879,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_VERSION = 5.0;
@@ -903,7 +895,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
@@ -932,7 +924,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lihaoyun6.AirBattery.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -966,7 +958,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lihaoyun6.AirBattery.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1043,14 +1035,6 @@
 				minimumVersion = 0.4.0;
 			};
 		};
-		18E6E36C2C0BA6A800A666CE /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.6.2;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1063,11 +1047,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 18BBC0652C16F4F900D9FE76 /* XCRemoteSwiftPackageReference "MultipeerKit" */;
 			productName = MultipeerKit;
-		};
-		18E6E36D2C0BA6A800A666CE /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 18E6E36C2C0BA6A800A666CE /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
