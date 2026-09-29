@@ -40,7 +40,7 @@ struct WindowAccessor: NSViewRepresentable {
     }
 
     class Coordinator: NSObject, NSWindowDelegate {
-        weak var window: NSWindow? // 使用 weak 避免循环引用
+        weak var window: NSWindow? // Use weak to avoid a reference cycle
         var onWindowOpen: ((NSWindow?) -> Void)?
         var onWindowActive: ((NSWindow?) -> Void)?
         var onWindowDeactivate: ((NSWindow?) -> Void)?
