@@ -1229,21 +1229,9 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
         window.center()
-        // Liquid Glass pass: the window was previously left at its default opaque white
-        // background, so SettingsView() just sat on a flat panel with no translucency at
-        // all - unlike the main popover (see BlurView usage in popover below), which already
-        // used a real NSVisualEffectView material and so already picks up macOS's native
-        // glass rendering. Making the window itself non-opaque with a clear background lets
-        // an NSVisualEffectView underneath actually show its blur-behind-window effect,
-        // matching the popover's look and letting Settings pick up the same system-level
-        // Liquid Glass treatment on macOS 26+ automatically - no hand-drawn "glass" effect
-        // needed, since this is a real system material like the popover already uses.
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.contentView = NSHostingView(rootView: ZStack {
-            BlurView(material: .popover)
-            SettingsView()
-        })
+        // Keep the window opaque: a clear, non-opaque window lets clicks fall through to
+        // whatever is behind it, so the window could not be dragged and jumped to the back.
+        window.contentView = NSHostingView(rootView: SettingsView())
         self.init(window: window)
         window.delegate = self
         // Mirrors the split-view sizing constraints the old WindowAccessor-based Settings scene

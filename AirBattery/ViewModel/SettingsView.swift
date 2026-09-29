@@ -8,39 +8,6 @@
 import SwiftUI
 import ServiceManagement
 import WidgetKit
-import AppKit
-
-// Real macOS "liquid glass" sidebar material (the same NSVisualEffectView Finder/Notes/Mail
-// use for their sidebars), wrapped for SwiftUI. blendingMode is .withinWindow on purpose, not
-// .behindWindow - that blurs against the window's own solid background instead of the desktop
-// behind it, so this gives the frosted-glass look without reintroducing the wallpaper
-// bleed-through bug from earlier (that happened because the window itself was translucent;
-// here the window stays fully opaque and only this material's own blur/tint is visible).
-struct VisualEffectView: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .sidebar
-    var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
-    // Every built-in material bakes in its own white/light tint on top of the blur, which is
-    // why swapping materials alone plateaued - none of them get see-through enough on their
-    // own. Dialing the whole view's alpha down lets more of whatever's actually behind the
-    // window show through underneath that tint, on top of the blur still being real. 1.0 is
-    // the old fully-opaque-material behavior; lower is more transparent.
-    var alpha: CGFloat = 1.0
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .active
-        view.alphaValue = alpha
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
-        nsView.alphaValue = alpha
-    }
-}
 
 struct SettingsView: View {
     @State private var selectedItem: String? = "General"
